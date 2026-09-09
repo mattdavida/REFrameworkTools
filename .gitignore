@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.venv/
+.env
+.liveview-agent.pid
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.DS_Store
+*.log

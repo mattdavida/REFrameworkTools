@@ -1,0 +1,10 @@
+.env
+.venv/
+.liveview-agent.pid
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+checkpoints.*
+.DS_Store

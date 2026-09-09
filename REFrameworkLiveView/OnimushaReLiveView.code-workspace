@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "REFrameworkMods",
+			"path": "../../REFrameworkMods"
+		},
+		{
+			"name": "REFrameworkTools",
+			"path": ".."
+		},
+		{
+			"name": "REFramework",
+			"path": "../../REFramework"
+		}
+	],
+	"settings": {}
+}

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liveview-agent"
+version = "0.1.0"
+description = "Local sidecar CLI for REFramework Live View"
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    "langchain-openai>=0.3",
+    "langchain-core>=0.3",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-dotenv>=1.0",
+    "pydantic>=2.0",
+    "mcp>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+liveview-agent = "backend.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
