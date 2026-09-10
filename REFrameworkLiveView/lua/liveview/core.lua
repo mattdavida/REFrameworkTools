@@ -151,6 +151,7 @@ function Core.collect_list(getter)
 end
 
 local member_cache = {}
+local MEMBER_CACHE_MAX = 400
 
 local function td_of(obj)
     local td = nil
@@ -203,6 +204,13 @@ function Core.member_index(obj)
         hay = key .. " " .. table.concat(names, " "),
         names = names,
     }
+    -- Evict the whole cache once the type count exceeds the cap.
+    -- A long session opens many types; an unbounded cache accumulates megabytes.
+    local n = 0
+    for _ in pairs(member_cache) do n = n + 1 end
+    if n >= MEMBER_CACHE_MAX then
+        member_cache = {}
+    end
     member_cache[key] = index
     return index
 end

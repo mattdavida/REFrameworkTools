@@ -14,15 +14,13 @@ Priority order: **P1 = blocks community use**, **P2 = friction for contributors*
 
 ### P1
 
-- [ ] **`config.py` fails at import time** — `_require()` raises if Azure vars are missing and
-  runs at module level. Any accidental import in the chain (including tests) blows up for users
-  who haven't set `.env` yet. Move the require check inside `llm_client.py` (lazy, only when
-  the LLM is actually called). The CLI and MCP tools should start without an API key set.
+- [x] **`config.py` fails at import time** — fixed: Azure vars moved to `require_azure()`
+  called lazily inside `llm_client.get_chat_llm()`. CLI, MCP, and health endpoint all work
+  without a `.env` set.
 
-- [ ] **`_DEFAULT_GAMES` hardcodes personal Onimusha paths** — `resolve_dir` falls back to
-  `D:\SteamLibrary\steamapps\common\OnimushaWotS`. For any community user without that path,
-  every missing-config error message points at a folder that doesn't exist on their machine.
-  Replace the fallback with a clear `RuntimeError("Set GAME_DIR in .env or pass -game <slug>")`.
+- [x] **`_DEFAULT_GAMES` hardcodes personal Onimusha paths** — fixed: `resolve_dir` now
+  returns a `_UNCONFIGURED` sentinel path when `GAME_DIR`/`LIVEVIEW_BRIDGE_DIR` are absent.
+  `status()` reports `"waiting"` cleanly instead of pointing at a wrong game folder.
 
 ### P2
 
@@ -37,18 +35,15 @@ Priority order: **P1 = blocks community use**, **P2 = friction for contributors*
   `requirements.txt` to prevent a silent breakage on the next SDK release. Add a comment
   explaining what each line works around and what SDK version it was tested against.
 
-- [ ] **`_busy` global in `inbox.py` is not thread-safe** — The `finally` block unconditionally
-  sets `_busy = False`. If an edge case ever fires two inbox events (rapid re-id, race on
-  startup), the finally from the first clears the flag for the second. Replace the module
-  global with an `asyncio.Lock` so the intent is explicit and the pattern is safe if the
-  watcher is ever made concurrent.
+- [x] **`_busy` global in `inbox.py` is not thread-safe** — fixed: replaced with
+  `asyncio.Lock` (`_inbox_lock`). `write_sidecar` derives the busy flag from
+  `_inbox_lock.locked()` so the bool is always consistent with the lock state.
 
 ### P3
 
-- [ ] **`cap` parameter not exposed to LLM tools** — `cache_search` and `search_types` accept
-  a `cap` argument in the bridge, but the `ops.py` wrappers don't expose it. The LLM can't
-  ask for more or fewer results. Add `cap: int = 40` to both functions so tools can be called
-  with a wider net when the first search comes back thin.
+- [x] **`cap` parameter not exposed to LLM tools** — fixed: `cache_search(needle, cap=40)`
+  and `search_types(needle, cap=40)` now accept a cap argument that flows through to the
+  bridge call. LLMs can request a wider net.
 
 - [ ] **`test_bridge.py` roundtrip test is integration-level in a unit file** — The
   `test_call_roundtrip` test spins a real thread and writes real temp files. That's fine as a
@@ -62,19 +57,16 @@ Priority order: **P1 = blocks community use**, **P2 = friction for contributors*
 
 ### P1
 
-- [ ] **`SHOW_EMPTY = 220` vs bridge `ROW_CAP = 40` mismatch** — Empty-query Finder shows 220
-  rows; the same empty query over the bridge (MCP / Chat) returns 40. An agent trying to census
-  the cache gets a 5× smaller sample than the user sees. Align the defaults: either raise
-  `ROW_CAP` to 100–150 for empty queries, or document the intentional difference in a comment
-  so future callers don't assume parity.
+- [x] **`SHOW_EMPTY = 220` vs bridge `ROW_CAP = 40` mismatch** — fixed: `bridge.lua` now
+  uses `ROW_CAP_EMPTY = 150` as the default cap for empty-needle queries, and raises the
+  max-cap ceiling to match. Non-empty queries keep `ROW_CAP = 40`.
 
 ### P2
 
-- [ ] **Redundant `require` calls inside closures** — `finder.lua` opens with
-  `local Core = require("liveview.core")` at file scope, then re-declares it inside
-  `live_rows()`, `filtered_results()`, and `Finder.draw()`. Lua's `require` is cached (same
-  table returned), so it's functionally harmless, but it reads like a draft that was never
-  cleaned up and confuses contributors reading the module. Remove the inner re-declarations.
+- [x] **Redundant `require` calls inside closures** — fixed: removed inner `local Core =
+  require(...)` and `local Cache = require(...)` re-declarations from `live_rows()`,
+  `filtered_results()`, and `Finder.draw()` in `finder.lua`. File-scope locals are used
+  throughout.
 
 - [ ] **`state.results` double-assignment** — `live_rows()` assigns `state.results = rows`
   (the pre-narrow list), then `filtered_results()` narrows it for display without updating
@@ -90,18 +82,16 @@ Priority order: **P1 = blocks community use**, **P2 = friction for contributors*
   guard: check the field's type definition for `is_primitive()` before calling `get_field`,
   skipping the allocation.
 
-- [ ] **Silent `pcall` swallows errors with no debug path** — `call_named`, `hop_one`, and
-  `crawl_one` swallow every error silently. After a game update that renames a method, you
-  get an empty cache with no indication why. Add a single `Log.warn(SOURCE, ...)` call in the
-  catch block of `hop_one` (not `crawl_one` — that would be too noisy) so hop failures surface
-  without spamming the log on every tick.
+- [x] **Silent `pcall` swallows errors with no debug path** — fixed: `hop_one` now wraps its
+  hop loop in `pcall` and calls `Log.warn("Cache", ...)` on failure. `crawl_one` left
+  silent intentionally (one warn per method name would be too noisy).
 
 ### P3
 
-- [ ] **`member_cache` grows forever** — `Core.member_index` caches TDB field/method names
-  per type in a module-local table with no size bound. After a long session with many types
-  opened, this accumulates. Add a `MAX_MEMBER_CACHE = 400` guard and drop the oldest entry
-  when the limit is hit (or just clear on `Cache.rebuild()`).
+- [x] **`member_cache` grows forever** — fixed: `core.lua` now checks the cache size before
+  inserting; when it hits `MEMBER_CACHE_MAX = 400` entries the whole cache is cleared.
+  Eviction is coarse (clear-all vs LRU) but avoids the complexity of a linked eviction list
+  in Lua.
 
 - [ ] **No guard against shipping a debug DLL** — `tools/sync-reflive.ps1` copies whatever
   DLL is in the build output without checking the build config. Add a check for the filename

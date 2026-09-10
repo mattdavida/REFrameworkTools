@@ -34,12 +34,9 @@ HB_STALE_S = 3.0
 CALL_TIMEOUT_S = 4.0
 POLL_S = 0.05
 
-_DEFAULT_GAMES = (
-    r"D:\SteamLibrary\steamapps\common\OnimushaWotS",
-    r"C:\Program Files (x86)\Steam\steamapps\common\OnimushaWotS",
-    r"C:\SteamLibrary\steamapps\common\OnimushaWotS",
-    r"E:\SteamLibrary\steamapps\common\OnimushaWotS",
-)
+# Sentinel returned when no game dir is configured. Callers that read files will
+# find nothing and report state "waiting" — a clear signal, not a wrong path.
+_UNCONFIGURED = Path("liveview_bridge_not_configured")
 
 
 def resolve_dir(explicit: str | Path | None = None) -> Path:
@@ -51,11 +48,9 @@ def resolve_dir(explicit: str | Path | None = None) -> Path:
     game = os.getenv("GAME_DIR")
     if game:
         return Path(game) / "reframework" / "data" / "liveview_bridge"
-    for candidate in _DEFAULT_GAMES:
-        root = Path(candidate)
-        if (root / "OnimushaWotS.exe").exists() or (root / "OnimushaWotS_Demo.exe").exists():
-            return root / "reframework" / "data" / "liveview_bridge"
-    return Path(_DEFAULT_GAMES[0]) / "reframework" / "data" / "liveview_bridge"
+    # Not configured: return a dead path so status() reports "waiting" cleanly.
+    # Fix: set GAME_DIR in .env or run  liveview-agent start -game <slug>
+    return _UNCONFIGURED
 
 
 def _atomic_write(path: Path, payload: dict[str, Any]) -> None:

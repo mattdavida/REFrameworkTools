@@ -30,14 +30,14 @@ def cache_stats() -> str:
     return _dump(bridge.call("cache_stats"))
 
 
-def cache_search(needle: str) -> str:
-    """List matching live-cache rows. Names only — no field values. Then open_object."""
-    return _dump(bridge.call("cache_search", needle=needle))
+def cache_search(needle: str, cap: int = 40) -> str:
+    """List matching live-cache rows (up to cap, default 40). Names only — no field values. Then open_object."""
+    return _dump(bridge.call("cache_search", needle=needle, cap=cap))
 
 
-def search_types(needle: str) -> str:
-    """Search TDB type names via ref_live.dll (same as Include types)."""
-    return _dump(bridge.call("search_types", needle=needle))
+def search_types(needle: str, cap: int = 40) -> str:
+    """Search TDB type names via ref_live.dll (same as Include types, up to cap results)."""
+    return _dump(bridge.call("search_types", needle=needle, cap=cap))
 
 
 def inspect_opened() -> str:

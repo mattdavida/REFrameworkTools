@@ -3,6 +3,7 @@
 -- player hops, the scene, and one field hop — spread across frames.
 
 local Core = require("liveview.core")
+local Log = require("refshell.log")
 
 local Cache = {}
 
@@ -459,16 +460,21 @@ local function hop_one(item)
     if not item or not Core.is_managed(item.obj) then
         return
     end
-    for i = 1, #HOPS do
-        local name = HOPS[i]
-        local result = call_named(item.obj, name)
-        if Core.is_managed(result) then
-            local path = item.path .. "." .. name .. "()"
-            Cache.add(result, path, "get")
-            Core.each_item(result, function(child, index)
-                Cache.add(child, path .. "[" .. tostring(index) .. "]", "element")
-            end)
+    local ok, err = pcall(function()
+        for i = 1, #HOPS do
+            local name = HOPS[i]
+            local result = call_named(item.obj, name)
+            if Core.is_managed(result) then
+                local path = item.path .. "." .. name .. "()"
+                Cache.add(result, path, "get")
+                Core.each_item(result, function(child, index)
+                    Cache.add(child, path .. "[" .. tostring(index) .. "]", "element")
+                end)
+            end
         end
+    end)
+    if not ok then
+        Log.warn("Cache", "hop error on " .. tostring(item.path or "?") .. ": " .. tostring(err))
     end
 end
 

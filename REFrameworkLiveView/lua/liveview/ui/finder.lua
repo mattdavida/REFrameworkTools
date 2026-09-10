@@ -15,8 +15,6 @@ local function pin_row(row)
 end
 
 local function live_rows()
-    local Core = require("liveview.core")
-    local Cache = require("liveview.cache")
     local state = Core.state
     local needle = Core.trim(state.filter)
     local rows = Cache.filter(needle)
@@ -67,7 +65,6 @@ local function opened_index(shown)
 end
 
 local function filtered_results(rows)
-    local Core = require("liveview.core")
     local state = Core.state
     local needle = Core.trim(state.results_filter)
     if needle == "" then
@@ -91,8 +88,6 @@ local function filtered_results(rows)
 end
 
 function Finder.draw(menu, ui)
-    local Core = require("liveview.core")
-    local Cache = require("liveview.cache")
     local state = Core.state
     if not Core.plugin_ok() then
         ui.muted("ref_live.dll not loaded. Cache still seeds PlayerManager.")
