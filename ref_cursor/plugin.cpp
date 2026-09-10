@@ -2,10 +2,16 @@
 // Same path as the REFramework overlay: stop SetCursorPos warps and
 // PostMessage WM_APP+1 so the engine shows its cursor. Does not open Insert.
 //
+// REF only swallows WM_* when Insert is open (m_draw_ui). Script windows
+// still set WantCaptureMouse, but that swallow never runs — capture() is
+// the same block, gated on hover. Keyboard lock is parked (via.hid).
+//
 // Lua (after the plugin loads):
 //   refcursor.request(true)
 //   refcursor.request(false)
+//   refcursor.capture(true)   -- pointer is over our menu this frame
 //   refcursor.is_requested()
+//   refcursor.is_capturing()
 
 #include <atomic>
 #include <cstdint>
@@ -24,6 +30,7 @@ using namespace reframework;
 #define RE_TOGGLE_CURSOR (WM_APP + 1)
 
 static std::atomic<int> g_refs{0};
+static std::atomic<bool> g_capture{false};
 static std::mutex g_patch_mtx;
 static void* g_set_cursor_pos{nullptr};
 static uint8_t g_orig_byte{0};
@@ -111,6 +118,41 @@ static void request(bool want) {
     int cur = g_refs.load(std::memory_order_relaxed);
     while (cur > 0 && !g_refs.compare_exchange_weak(cur, cur - 1, std::memory_order_relaxed)) {
     }
+    if (g_refs.load(std::memory_order_relaxed) <= 0) {
+        g_capture.store(false, std::memory_order_relaxed);
+    }
+}
+
+static void set_capture(bool want) {
+    g_capture.store(want && g_refs.load(std::memory_order_relaxed) > 0, std::memory_order_relaxed);
+}
+
+// Same messages REF keeps from the game when Insert is focused and
+// WantCaptureMouse is set. Return false = do not call the game wndproc.
+static bool on_message(void*, unsigned int message, unsigned long long, long long) {
+    if (g_refs.load(std::memory_order_relaxed) <= 0 || !g_capture.load(std::memory_order_relaxed)) {
+        return true;
+    }
+    switch (message) {
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MBUTTONDBLCLK:
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL:
+    case WM_INPUT:
+        return false;
+    default:
+        return true;
+    }
 }
 
 static void on_present() {
@@ -136,13 +178,20 @@ static void on_lua_state_created(lua_State* l) {
     t["request"] = [](sol::object value) {
         request(value.valid() && value != sol::lua_nil && value.as<bool>());
     };
+    t["capture"] = [](sol::object value) {
+        set_capture(value.valid() && value != sol::lua_nil && value.as<bool>());
+    };
     t["is_requested"] = []() {
         return g_refs.load(std::memory_order_relaxed) > 0;
+    };
+    t["is_capturing"] = []() {
+        return g_capture.load(std::memory_order_relaxed);
     };
 }
 
 static void on_lua_state_destroyed(lua_State*) {
     g_refs.store(0, std::memory_order_relaxed);
+    g_capture.store(false, std::memory_order_relaxed);
 }
 
 extern "C" __declspec(dllexport) void reframework_plugin_required_version(REFrameworkPluginVersion* version) {
@@ -158,7 +207,8 @@ extern "C" __declspec(dllexport) bool reframework_plugin_initialize(const REFram
     fn->on_lua_state_created(on_lua_state_created);
     fn->on_lua_state_destroyed(on_lua_state_destroyed);
     fn->on_present(on_present);
-    fn->log_info("[refcursor] loaded — use refcursor.request(true/false) from Lua");
+    fn->on_message((REFOnMessageCb)on_message);
+    fn->log_info("[refcursor] loaded — request() for cursor, capture() to swallow hover input");
 
     return true;
 }

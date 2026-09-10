@@ -1,8 +1,12 @@
 /**
  * Bundle Live View and copy it into a REFramework game install.
  *
- * Usage: npm run deploy
- *        GAME_DIR="D:\\SteamLibrary\\steamapps\\common\\OnimushaWotS" npm run deploy
+ * Same -game flag as liveview-agent start:
+ *   npm run deploy -- -game MonsterHunterRise
+ *   npm run deploy -- -game MonsterHunterWilds
+ *   npm run deploy -- -game "D:\\SteamLibrary\\steamapps\\common\\OnimushaWotS"
+ *
+ * Or GAME_DIR=... npm run deploy
  *
  * Work in this repo. Deploy writes:
  *   <game>/reframework/autorun/ref_liveview.lua
@@ -17,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { GameNotFound, parseGameArg, resolveGame } from "./steam.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -28,23 +33,6 @@ const REFSHELL_ROOT = path.resolve(
     || path.join(ROOT, "..", "..", "REFrameworkMods", "REFrameworkRefShell"),
 );
 
-const GAME_EXES = [
-  "OnimushaWotS_Demo.exe",
-  "OnimushaWotS.exe",
-  "MonsterHunterRise.exe",
-];
-
-const GAME_DIR_CANDIDATES = [
-  process.env.GAME_DIR,
-  process.env.MHRISE_DIR,
-  process.env.ONIMUSHA_DIR,
-  "D:\\SteamLibrary\\steamapps\\common\\OnimushaWotS",
-  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\OnimushaWotS",
-  "C:\\SteamLibrary\\steamapps\\common\\OnimushaWotS",
-  "E:\\SteamLibrary\\steamapps\\common\\OnimushaWotS",
-  "D:\\SteamLibrary\\steamapps\\common\\MonsterHunterRise",
-].filter(Boolean);
-
 function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, { stdio: "inherit", ...opts });
   if (result.error) throw result.error;
@@ -53,21 +41,19 @@ function run(cmd, args, opts = {}) {
   }
 }
 
-function isGameDir(dir) {
-  return GAME_EXES.some((exe) => fs.existsSync(path.join(dir, exe)));
-}
-
 function resolveGameDir() {
-  if (process.env.GAME_DIR && fs.existsSync(process.env.GAME_DIR)) {
-    return path.resolve(process.env.GAME_DIR);
+  const game = parseGameArg();
+  if (game) {
+    return resolveGame(game);
   }
-  for (const candidate of GAME_DIR_CANDIDATES) {
-    if (candidate && isGameDir(candidate)) {
-      return path.resolve(candidate);
-    }
+  if (process.env.GAME_DIR) {
+    return resolveGame(process.env.GAME_DIR);
   }
   throw new Error(
-    "Game folder not found. Set GAME_DIR to a REFramework game folder.",
+    "Game folder not found. Use the steamapps\\common folder name, same as liveview-agent:\n"
+    + "  npm run deploy -- -game MonsterHunterWilds\n"
+    + "  npm run deploy MonsterHunterWilds\n"
+    + "  node tools/deploy.mjs -game MonsterHunterRise",
   );
 }
 
@@ -148,11 +134,13 @@ function main() {
 
   const kb = (fs.statSync(dest).size / 1024).toFixed(1);
   console.log(`Copied ${SCRIPT_NAME} -> ${dest} (${kb} KiB)`);
+  console.log(`Game  ${gameDir}`);
 }
 
 try {
   main();
 } catch (err) {
-  console.error(`deploy failed: ${err.message}`);
+  const prefix = err instanceof GameNotFound ? "deploy" : "deploy failed";
+  console.error(`${prefix}: ${err.message}`);
   process.exit(1);
 }

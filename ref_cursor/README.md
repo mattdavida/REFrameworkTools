@@ -29,11 +29,6 @@ This target lives in the REFramework tree so it links the same Lua REF uses.
 4. Launch the game. REFramework log should say `[refcursor] loaded`.
 5. Drop `test_refcursor.lua` into `reframework/autorun` (or run the snippet from the Script Editor). Insert can stay closed.
 
-## After it works
-
-- Wire RefShell `lock_cursor` to `refcursor.request` when the table exists; keep the HID fallback.
-- PR the same request API into REFramework `ScriptRunner` so the DLL is optional.
-
 ## What it does
 
 - `user32!SetCursorPos` → `ret` while requested (skipped if Insert already patched it).

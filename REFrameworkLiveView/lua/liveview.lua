@@ -33,7 +33,15 @@ function LiveView.attach(menu)
     if not menu._live_cache_bound then
         menu._live_cache_bound = true
         re.on_frame(function()
-            require("liveview.cache").tick()
+            local Cache = require("liveview.cache")
+            -- Disable only stops the walk. Bridge/Chat must keep pulsing
+            -- or inspect still works in-game while MCP/Chat report stale.
+            if Cache.enabled() then
+                local ok, err = pcall(Cache.tick)
+                if not ok then
+                    Log.error(Core.SOURCE, "cache tick — " .. tostring(err))
+                end
+            end
             require("liveview.bridge").tick()
             require("liveview.ui.chat").tick()
         end)

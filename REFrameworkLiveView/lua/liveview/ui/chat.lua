@@ -19,6 +19,8 @@ local chat = {
     pending_id = nil,
     sent_at = 0,
     seq = 0,
+    starting_at = 0,
+    last_cmd = "",
 }
 
 local function wrap_lines(text, max_w)
@@ -60,22 +62,7 @@ local function wrap_lines(text, max_w)
 end
 
 local function sidecar_state()
-    local side = Bridge.read_sidecar()
-    if type(side) ~= "table" then
-        return "waiting", false
-    end
-    local ts = tonumber(side.ts)
-    if not ts then
-        return "waiting", false
-    end
-    local age = os.time() - ts
-    if age < 0 then
-        age = 0
-    end
-    if age <= 3 then
-        return "connected", side.busy == true
-    end
-    return "stale", false
+    return Bridge.sidecar_state()
 end
 
 local function history_payload()
@@ -157,24 +144,137 @@ function Chat.clear()
     chat.sent_at = 0
 end
 
-local function draw_status(ui)
+local function current_game()
+    local name = "mhwilds"
+    pcall(function()
+        local got = reframework:get_game_name()
+        if type(got) == "string" and got ~= "" and got ~= "unknown" then
+            name = got
+        end
+    end)
+    return name
+end
+
+local function can_spawn_agent()
+    return type(reflive) == "table" and type(reflive.agent_start) == "function"
+end
+
+local function run_agent(verb, menu)
+    if not can_spawn_agent() then
+        if menu and menu.toast then
+            menu:toast("Update ref_live.dll to start the agent from Chat", "warning", 2400)
+        end
+        return
+    end
+    local ok, msg
+    if verb == "stop" then
+        ok, msg = reflive.agent_stop()
+    else
+        ok, msg = reflive.agent_start(current_game())
+    end
+    chat.last_cmd = tostring(msg or "")
+    if ok then
+        chat.starting_at = verb == "start" and os.time() or 0
+        if menu and menu.toast then
+            menu:toast(chat.last_cmd, "info", 1800)
+        end
+    else
+        chat.starting_at = 0
+        if menu and menu.toast then
+            menu:toast(chat.last_cmd, "danger", 2800)
+        end
+    end
+end
+
+function Chat.recover(menu)
+    local pulsed = Bridge.nudge()
+    local side = select(1, Bridge.sidecar_state())
+    if side == "connected" then
+        if menu and menu.toast then
+            menu:toast(pulsed and "Bridge pulsed" or "Bridge write failed", pulsed and "info" or "warning", 1600)
+        end
+        return
+    end
+    local starting = (chat.starting_at or 0) > 0 and (os.time() - chat.starting_at) < 20
+    if starting then
+        if menu and menu.toast then
+            menu:toast("Agent starting…", "info", 1400)
+        end
+        return
+    end
+    run_agent("start", menu)
+end
+
+local BTN_H = 28
+
+local function text_size(s)
+    local ok, sz = pcall(imgui.calc_text_size, s)
+    if ok and sz then
+        return sz.x or (#s * 7), sz.y or 13
+    end
+    return #s * 7, 13
+end
+
+local function set_pos(x, y)
+    if Vector2f and Vector2f.new then
+        imgui.set_cursor_pos(Vector2f.new(x, y))
+    else
+        imgui.set_cursor_pos({ x, y })
+    end
+end
+
+local function pill_w(label, min_w)
+    local w = min_w
+    local ok, sz = pcall(imgui.calc_text_size, label)
+    if ok and sz and sz.x then
+        w = math.max(min_w, sz.x + 24)
+    end
+    return w
+end
+
+local function draw_status(ui, menu)
     local state, busy = sidecar_state()
+    if state == "connected" then
+        chat.starting_at = 0
+    end
+    local starting = (chat.starting_at or 0) > 0 and (os.time() - chat.starting_at) < 20
+    local game = current_game()
     local label
     if state == "connected" and busy then
         label = "Agent thinking…"
     elseif state == "connected" then
         label = "Agent ready"
+    elseif starting then
+        label = "Agent starting for " .. game .. "…"
     elseif state == "stale" then
-        label = "Agent stale — is uvicorn still on 3002?"
+        label = "Agent stale — restart for " .. game
     else
-        label = "Agent waiting — start the sidecar on 3002"
+        label = "Agent waiting"
     end
     if chat.pending_id and state ~= "connected" and (os.time() - (chat.sent_at or 0)) >= 8 then
-        label = "No reply yet. Sidecar must be running (port 3002)."
+        label = "No reply yet. Start the agent."
     end
+
+    local origin = imgui.get_cursor_pos()
+    local row_x = (origin and origin.x) or 0
+    local row_y = (origin and origin.y) or 0
+    local tw, th = text_size(label)
+    set_pos(row_x, row_y + (BTN_H - th) * 0.5)
     imgui.text_colored(label, MUTED)
-    imgui.same_line()
-    if imgui.button("Clear##live_chat_clear", { 64, 22 }) then
+    local x = row_x + tw + 8
+    set_pos(x, row_y)
+    if state == "connected" then
+        if imgui.button("Stop##live_chat_agent", { pill_w("Stop", 64), BTN_H }) then
+            run_agent("stop", menu)
+        end
+        imgui.same_line()
+    elseif not starting then
+        if imgui.button("Start##live_chat_agent", { pill_w("Start", 64), BTN_H }) then
+            run_agent("start", menu)
+        end
+        imgui.same_line()
+    end
+    if imgui.button("Clear##live_chat_clear", { pill_w("Clear", 64), BTN_H }) then
         Chat.clear()
     end
     local opened = Core.state.pinned_name
@@ -248,7 +348,7 @@ function Chat.draw(menu)
         return
     end
 
-    draw_status(ui)
+    draw_status(ui, menu)
     imgui.separator()
 
     local list_h = Widgets.remaining_height(52)

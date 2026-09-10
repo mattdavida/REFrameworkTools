@@ -62,6 +62,7 @@ local scene_key = nil
 local had_player = false
 local frame = 0
 local gen = 0
+local enabled = true
 local kind_n = {
     scene = 0,
     singleton = 0,
@@ -247,7 +248,7 @@ local function controlling_player(pm)
 end
 
 -- Add PlayerManager, and re-queue hops even when it is already cached.
--- Boot / title seeds it once with no player; those hops must run again in-session.
+-- Title screens seed PlayerManager before a player exists; hops run again when one appears.
 local function seed_player()
     local pm, name = player_manager()
     if not pm then
@@ -304,6 +305,21 @@ local function rebuild_if_needed()
 end
 
 -- Same rebuild the overlay Reset was doing for search, without destroying Lua.
+function Cache.enabled()
+    return enabled
+end
+
+function Cache.set_enabled(want)
+    want = want and true or false
+    if enabled == want then
+        return
+    end
+    enabled = want
+    if want then
+        Cache.rebuild()
+    end
+end
+
 function Cache.rebuild()
     Cache.clear()
     seed_player()
@@ -450,6 +466,9 @@ function Cache.boost_hops()
 end
 
 function Cache.tick()
+    if not enabled then
+        return
+    end
     frame = frame + 1
     rebuild_if_needed()
     if frame == 1 or frame % 45 == 0 then

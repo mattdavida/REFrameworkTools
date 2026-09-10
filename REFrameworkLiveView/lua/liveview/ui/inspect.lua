@@ -203,7 +203,7 @@ local function draw_fields_inspector(ui, list_h)
         if state.pinned_kind == "type" and state.pinned_td then
             ui.muted("Type inspect — no live values. Has or Go to get an instance.")
         else
-            ui.muted("Open an object from Finder. Values update here like UE4SS Live View.")
+            ui.muted("Open an object from Finder.")
             return
         end
     end

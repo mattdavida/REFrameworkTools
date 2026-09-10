@@ -1,59 +1,71 @@
 # Live View Agent
 
-Local Azure OpenAI sidecar for [REFramework Live View](../REFrameworkLiveView). The game never holds the key. This process must be running on **3002**.
+Local Azure OpenAI sidecar for [REFramework Live View](../REFrameworkLiveView). The game never holds the key. One process on **3002** serves Chat, the file bridge, and MCP.
 
-**First pass (2026-09-05) is real.** Chat in DevTools can search the live cache, open a Finder row (same as a click), read fields, and Set bool/number/string on the opened object. Proven in-session: open `cHealthManager`, read `MaxHealth` / `DefaultMaxHealth` / `Health` at 2000, Set them to 9999.
+Live View is the explorer. Chat and MCP are accelerators: find an object in-game, verify the live name and fields here, then write a mod from that graph.
 
-That is the whole first pass. Do not pretend it is full automation.
+## Contract
 
-## What works
+| | Chat (in-game) | MCP (Cursor) |
+| --- | --- | --- |
+| Search the live cache | yes | yes |
+| Open a row (same as a Finder click) | yes | yes |
+| Read fields on the opened object | yes | yes |
+| Set bool / number / string on the opened object | yes | **no** |
+| Call methods | no | no |
+| See objects outside the 3000-cap cache | no | no |
+
+MCP is read-only on purpose. Writes stay in the overlay, on an object you can see.
+
+Both share one `req.json`. Do not run Chat tools and Cursor tools at the same time.
+
+Health: `GET http://127.0.0.1:3002/api/health`.
+
+## Ready when
+
+1. `liveview-agent isup` → `up` and `bridge=connected`
+2. In-game Chat says **Agent ready** (Start on that tab if it does not)
+3. Cursor **liveview** MCP is green
+4. F8 is open and the cache toggle is **Enabled**
+
+The header **Bridge** chip is the AND of the game heartbeat and the sidecar pulse.
+
+## What it does
 
 - Health: `GET http://127.0.0.1:3002/api/health` → `bridge: connected` when Live View is writing `hb.json`.
 - Chat tab (DevTools) and `POST /api/chat` (SSE: `token` / `tool` / `done` / `error`).
-- File drop only. Stock REF Lua has no HTTP. Key stays in this process.
+- File drop only. Stock REF Lua has no HTTP.
 - Each Chat send includes a **session** (Finder box, visible rows, last opened object).
-- Tools:
-  - `set_finder` — types the Search box
-  - `open_object` — same as clicking a result, then returns fields
-  - `inspect_opened` — live fields on whatever is open
-  - `set_opened_field` — same as inspect **Set** (bool / number / string)
-  - `cache_search` / `cache_stats` / `search_types` / `ui_state`
-- Azure is still the copied `execution_agent` `.env`. Own Bicep is not used yet.
+- Chat tools: `set_finder`, `open_object`, `inspect_opened`, `set_opened_field`, `cache_search`, `cache_stats`, `search_types`, `ui_state`.
+- MCP tools: the read set above, plus `bridge_status`. No Set.
 
-## What it cannot do yet (next session)
+## Limits
 
-Canonical list. MCP first pass is done — do not rediscover this.
-
-- **Method calls** (`get_MaxHealth()`, Find functions). Fields only.
-- **Non-primitive writes** — objects, lists, enums inspect would not Set as a bool/number/string.
-- **Apply / Reject** — Chat ask is the only confirmation. No HITL row.
-- **Follow a clamp** (`_HealthGaugeList`, other managers) without you asking.
-- **Cache horizon** — same 3000-cap hop seed as Finder. Not an object iterator. Nested save objects (`cUserSystemParam`) may be open in Live and still miss `open_object`.
-- **`--reload` hang** — Chat/MCP ignore new tools; restart uvicorn, do not only `--reload`.
-- **MCP is read-only** — no `set_opened_field` / `set_finder` from Cursor. Chat still Sets.
-- **One `req.json`** — do not run Chat tools and Cursor MCP in the same moment.
-- **Own Azure** — still the copied `execution_agent` `.env`. `infra/deploy.ps1` stays parked.
-- **Next-game seed** — hop allowlist in Live View `cache.lua` is Onimusha-shaped. Agent/MCP will look empty until that port.
+- No method calls. Fields only.
+- No non-primitive writes (objects, lists, enums).
+- No Apply / Reject row — Chat ask is the confirmation.
+- Same 3000-cap hop cache as Finder. Nested objects can be open in inspect and still miss `open_object`.
+- `uvicorn --reload` does not pick up new tools. `liveview-agent stop` then `start`.
+- Hop allowlists live in Live View `cache.lua`. A new game looks empty until that list is retargeted.
 
 ## Quick start
 
-Once, from this repo. Same idea as `npm i -g`: **pipx** builds one `liveview-agent` shim and puts **that file** on PATH. Do not add `.venv\Scripts` to PATH.
+Once, from this folder. **pipx** puts `liveview-agent` on PATH. Do not add `.venv\Scripts` to PATH.
 
 ```powershell
-cd C:\Users\mattd\development\REFrameworkTools\ReFrameworkLiveView.Agent
-# copy an existing .env here if you do not already have one
+cd ReFrameworkLiveView.Agent
 python -m backend install
 ```
 
-After that, any terminal:
+Then, any terminal:
 
 ```powershell
 liveview-agent start -game MonsterHunterWilds
 ```
 
-Re-run `python -m backend install` (or `liveview-agent install`) after pulling CLI changes. `.env` still lives in this repo.
+Re-run `python -m backend install` (or `liveview-agent install`) after pulling CLI changes. Azure settings stay in `.env` in this folder (gitignored).
 
-Dev checkout (tests only — not how you get the command on PATH):
+Dev checkout (tests only — not how the command gets on PATH):
 
 ```powershell
 python -m venv .venv
@@ -61,7 +73,7 @@ python -m venv .venv
 pip install -e .[dev]
 ```
 
-`-game` is optional. Omit it to use `GAME_DIR` from `.env`. Steam install folders are resolved the same way as UE4SSInstaller (registry + `libraryfolders.vdf` + `appmanifest_*.acf`).
+`-game` is optional. Omit it to use `GAME_DIR` from `.env`. Steam folders resolve from the registry, `libraryfolders.vdf`, and `appmanifest_*.acf`.
 
 ```powershell
 liveview-agent start -game MonsterHunterWilds
@@ -71,20 +83,14 @@ liveview-agent isup
 liveview-agent stop
 ```
 
-Slugs: `monsterhunterwilds` (`mhwilds`), `onimushawots` (`onimusha`), `dmc5`. Also accepts a Steam app id or the `steamapps\common` folder name.
-
-Do not use `uvicorn --reload`. Chat/MCP ignore new tools until a real restart — `stop` then `start`.
+Slugs: `monsterhunterwilds` (`mhwilds`), `monsterhunterrise` (`mhrise`, `rise`), `onimushawots` (`onimusha`), `dmc5`. Also accepts a Steam app id or the `steamapps\common` folder name.
 
 After a Live View Lua deploy: overlay **Reset scripts**, F8, Chat. Status **Agent ready**.
-
-```
-GET http://127.0.0.1:3002/api/health
-```
 
 ## Layout
 
 ```
-.env                         copied from execution_agent — not committed
+.env                         Azure settings — not committed
 backend/cli.py               liveview-agent start | stop | isup | install
 backend/steam.py             Steam libraries + -game slugs
 backend/config.py            fail-fast Azure vars + GAME_DIR
@@ -92,50 +98,36 @@ backend/tools/llm_client.py  AzureChatOpenAI
 backend/tools/bridge.py      file-drop client (hb / req / res / chat)
 backend/tools/ops.py         shared Chat + MCP ops
 backend/tools/liveview.py    Chat tools (includes Set)
-backend/mcp_server.py        MCP registration — mounted on uvicorn, not a second process
+backend/mcp_server.py        MCP registration — mounted on uvicorn
 backend/agent/loop.py        stream + tool rounds
 backend/agent/inbox.py       Chat tab watcher (chat_req → chat_out)
 backend/main.py              /api/health  /api/chat  /mcp + inbox
-infra/                       dedicated Azure — post-working, do not run yet
+infra/                       dedicated Azure (optional, not required to run)
 tests/                       bridge + inbox + cli / steam
 ```
 
-Port **3002** so execution_agent can stay on 3001.
+Port **3002**.
 
-## Rules
+## MCP
 
-- Do not put this inside `ref_liveview.lua` or Onimusha.
-- Tools must use Finder's cache path (`Cache.filter`).
-- `set_opened_field` = inspect Set. No method calls, no VFX, no `requestOniSenseStartEffect`.
-- "Opened" is a Finder click. Do not tell the user to pin.
-- Own Bicep is a post-working goal. Do not run `infra/deploy.ps1` until you want keys isolated.
+`liveview-agent start` is Chat, the file bridge, and `http://127.0.0.1:3002/mcp`. Do not start `mcp_server.py` or a second port.
 
-## MCP — how this is supposed to feel
+**Cursor (once):** Command Palette → `View: Open MCP Settings` (not Ctrl+,). That UI reads `%USERPROFILE%\.cursor\mcp.json`:
 
-There is **one** process. The uvicorn you already run **is** MCP.
-
+```json
+{
+  "mcpServers": {
+    "liveview": {
+      "url": "http://127.0.0.1:3002/mcp"
+    }
+  }
+}
 ```
-liveview-agent start
-```
 
-That serves Chat, the file-bridge inbox, and `http://127.0.0.1:3002/mcp`. Do not start `mcp_server.py`. Do not start a second port.
+Green means this chat can call tools. Red almost always means the sidecar is down — Start from Chat or `liveview-agent start`, then toggle liveview off and on.
 
-**Cursor (once):** do not use Ctrl+, (that is VS Code settings). Open **Cursor Settings** with Ctrl+Shift+J, or Command Palette → `View: Open MCP Settings`. That UI reads `%USERPROFILE%\.cursor\mcp.json`. `liveview` is in that file. Turn it on. Green means this chat can call tools. Red almost always means uvicorn is not running — start it, then toggle liveview off and on.
+Cursor green ≠ live data. Tools need the game writing `hb.json`. If the sidecar is up and the game is not, `bridge` is `waiting` and tools say so.
 
-**How you know it is ready**
+Read tools: `bridge_status`, `ui_state`, `cache_stats`, `cache_search`, `search_types`, `open_object`, `inspect_opened`.
 
-1. Terminal shows `MCP at http://127.0.0.1:3002/mcp` on startup.
-2. `GET http://127.0.0.1:3002/api/health` includes `"mcp": "http://127.0.0.1:3002/mcp"`.
-3. Cursor liveview is green.
-
-Cursor connecting ≠ game data. Tools need Live View writing `hb.json` (game open, F8, Reset scripts after a Lua deploy). If the server is up and the game is not, `bridge` is `waiting` and tools say so.
-
-Read tools only: `bridge_status`, `ui_state`, `cache_stats`, `cache_search`, `search_types`, `open_object`, `inspect_opened`. No Set from Cursor.
-
-Do not run in-game Chat tools and Cursor MCP at the same moment. One `req.json`.
-
-Another game: `liveview-agent stop` then `liveview-agent start -game MonsterHunterWilds` (or set `GAME_DIR` in `.env`). Hop allowlists in Live View `cache.lua` are still Onimusha-shaped.
-
-## Next session
-
-Work **What it cannot do yet** above. Start with one getter/method call or Apply / Reject — not another MCP transport. New game = Live View hop allowlist first, then the same uvicorn.
+Another game: `liveview-agent stop` then `liveview-agent start -game <folder>` (or Start from Chat in that session). Empty Finder means empty MCP.

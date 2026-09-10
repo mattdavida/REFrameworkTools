@@ -112,13 +112,17 @@ function Finder.draw(menu, ui)
         state.show_types = types_on and true or false
     end
     local stats = Cache.stats()
-    ui.muted(string.format(
-        "Live cache %d — %d hops, %d singletons, %d scene (scene cap 900).",
-        stats.total,
-        stats.hops,
-        stats.singleton,
-        stats.scene
-    ))
+    if not Cache.enabled() then
+        ui.muted("Cache paused — enable Live cache at the top right.")
+    else
+        ui.muted(string.format(
+            "Live cache %d — %d hops, %d singletons, %d scene (scene cap 900).",
+            stats.total,
+            stats.hops,
+            stats.singleton,
+            stats.scene
+        ))
+    end
 
     ui.section("Results", function()
         local rows = live_rows()

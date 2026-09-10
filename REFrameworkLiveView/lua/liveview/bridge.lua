@@ -1,7 +1,7 @@
 -- File-drop IPC for the Live View sidecar. Stock REF Lua has no HTTP.
 -- Agent writes data/liveview_bridge/req.json; we write hb.json + res.json.
 -- Getters + Finder drive + set_field on the opened object (same as inspect Set).
--- "Open" is a click on a result. Do not yank the Chat tab to Live View.
+-- Opening a result does not switch the workspace tab.
 
 local Log = require("refshell.log")
 local Core = require("liveview.core")
@@ -22,10 +22,12 @@ local ROW_CAP = 40
 local FIELD_CAP = 80
 local METHOD_CAP = 80
 local HB_EVERY = 30
+local STALE_S = 3
 
 local frame = 0
 local last_id = ""
 local ready_logged = false
+local hb_written_at = 0
 
 local function json_ok()
     return type(json) == "table" and type(json.load_file) == "function" and type(json.dump_file) == "function"
@@ -140,7 +142,7 @@ end
 
 local function write_hb()
     local opened = opened_info()
-    write_json(HB, {
+    local ok = write_json(HB, {
         ok = true,
         ts = os.time(),
         plugin = Core.plugin_ok(),
@@ -150,10 +152,14 @@ local function write_hb()
         pinned_type = opened and opened.type or "",
         opened = opened,
     })
-    if not ready_logged then
-        ready_logged = true
-        Log.info(SOURCE, "agent bridge ready — data/liveview_bridge")
+    if ok then
+        hb_written_at = os.time()
+        if not ready_logged then
+            ready_logged = true
+            Log.info(SOURCE, "agent bridge ready — data/liveview_bridge")
+        end
     end
+    return ok
 end
 
 local function op_cache_search(req)
@@ -539,6 +545,52 @@ end
 
 function Bridge.read_sidecar()
     return read_json(SIDECAR)
+end
+
+function Bridge.nudge()
+    return write_hb()
+end
+
+function Bridge.hb_ok()
+    if hb_written_at <= 0 then
+        return false
+    end
+    local age = os.time() - hb_written_at
+    if age < 0 then
+        age = 0
+    end
+    return age <= STALE_S
+end
+
+function Bridge.sidecar_state()
+    local side = Bridge.read_sidecar()
+    if type(side) ~= "table" then
+        return "waiting", false
+    end
+    local ts = tonumber(side.ts)
+    if not ts then
+        return "waiting", false
+    end
+    local age = os.time() - ts
+    if age < 0 then
+        age = 0
+    end
+    if age <= STALE_S then
+        return "connected", side.busy == true
+    end
+    return "stale", false
+end
+
+-- Tools need both pulses. live = game hb + sidecar.
+function Bridge.link_state()
+    local side, busy = Bridge.sidecar_state()
+    if Bridge.hb_ok() and side == "connected" then
+        return "live", busy
+    end
+    if side == "waiting" then
+        return "waiting", false
+    end
+    return "stale", false
 end
 
 function Bridge.tick()

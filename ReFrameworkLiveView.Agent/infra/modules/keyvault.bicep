@@ -1,6 +1,6 @@
 /*
-  Key Vault — Live View Agent (post-working goal).
-  Local .env is enough until you want a dedicated resource.
+  Key Vault — Live View Agent.
+  Optional. Local .env is enough to run.
 */
 
 param name string
