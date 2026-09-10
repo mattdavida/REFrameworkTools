@@ -6,7 +6,9 @@ local Core = require("liveview.core")
 
 local Cache = {}
 
-local MAX = 3000
+-- Hop graph stays bounded. Field leaves (StatusParam, catalogs) need room
+-- without evicting the player hops Finder already showed.
+local MAX = 8000
 local SCENE_CAP = 900
 local SHOW_EMPTY = 220
 local SCENE_BUDGET = 70
@@ -106,18 +108,52 @@ local function bump_kind(kind, delta)
     end
 end
 
+local function drop_row(i)
+    local row = entries[i]
+    if not row then
+        return false
+    end
+    by_key[Core.object_key(row.object)] = nil
+    table.remove(entries, i)
+    bump_kind(row.kind, -1)
+    gen = gen + 1
+    return true
+end
+
 local function evict_scene()
     for i = 1, #entries do
-        local row = entries[i]
-        if row.kind == "scene" then
-            by_key[Core.object_key(row.object)] = nil
-            table.remove(entries, i)
-            bump_kind("scene", -1)
-            gen = gen + 1
-            return true
+        if entries[i].kind == "scene" then
+            return drop_row(i)
         end
     end
     return false
+end
+
+-- Pin / Go only: drop a field leaf, never a player hop.
+local function evict_leaf()
+    if evict_scene() then
+        return true
+    end
+    for i = 1, #entries do
+        local kind = entries[i] and entries[i].kind
+        if kind == "field" or kind == "element" then
+            return drop_row(i)
+        end
+    end
+    return false
+end
+
+local function should_walk(kind, type_name)
+    if kind == "singleton" or kind == "get" then
+        return true
+    end
+    if kind ~= "field" then
+        return false
+    end
+    local tn = tostring(type_name or "")
+    return tn:find("user_data", 1, true) ~= nil
+        or tn:find("Param", 1, true) ~= nil
+        or tn:find("Catalog", 1, true) ~= nil
 end
 
 local function call_named(obj, name)
@@ -154,10 +190,7 @@ function Cache.add(obj, path, kind)
         return false
     end
     if #entries >= MAX then
-        if kind == "scene" then
-            return false
-        end
-        if not evict_scene() then
+        if kind == "scene" or not evict_scene() then
             return false
         end
     end
@@ -188,10 +221,37 @@ function Cache.add(obj, path, kind)
     entries[#entries + 1] = row
     by_key[key] = row
     bump_kind(kind, 1)
-    crawl_q[#crawl_q + 1] = { obj = obj, path = row.path }
-    hop_q[#hop_q + 1] = { obj = obj, path = row.path }
+    if kind == "singleton" or kind == "get" then
+        hop_q[#hop_q + 1] = { obj = obj, path = row.path }
+    end
+    if should_walk(kind, tn) then
+        crawl_q[#crawl_q + 1] = { obj = obj, path = row.path }
+    end
     gen = gen + 1
     Core.remember_object(obj, row.path)
+    return true
+end
+
+-- Pin / Go must land in the same index Finder searches. Refresh hay if
+-- the row was added before member names were available.
+function Cache.touch(obj, path, kind)
+    if not Core.is_managed(obj) then
+        return false
+    end
+    local key = Core.object_key(obj)
+    local row = by_key[key]
+    if not row then
+        if #entries >= MAX then
+            evict_leaf()
+        end
+        return Cache.add(obj, path, kind)
+    end
+    local members = Core.member_index(obj)
+    local hay = tostring(row.path or "") .. " " .. tostring(row.name or "") .. " " .. tostring(row.type or "") .. " " .. members.hay
+    if hay ~= row.hay then
+        row.hay = hay
+        gen = gen + 1
+    end
     return true
 end
 
@@ -426,8 +486,10 @@ local function crawl_one(item)
     local fields = Core.collect_list(function()
         return td:get_fields()
     end)
-    local limit = math.min(#fields, 48)
-    for i = 1, limit do
+    -- Spend the budget on live objects, not the first 48 primitives.
+    -- PlayerGlobalParam's _StatusParam sits after a long run of floats.
+    local added = 0
+    for i = 1, #fields do
         local fname = nil
         pcall(function()
             fname = fields[i]:get_name()
@@ -436,12 +498,16 @@ local function crawl_one(item)
         pcall(function()
             value = item.obj:get_field(fname)
         end)
-        local path = item.path .. "." .. tostring(fname)
         if Core.is_managed(value) then
+            local path = item.path .. "." .. tostring(fname)
             Cache.add(value, path, "field")
             Core.each_item(value, function(child, index)
                 Cache.add(child, path .. "[" .. tostring(index) .. "]", "element")
             end)
+            added = added + 1
+            if added >= 80 then
+                break
+            end
         end
     end
 end
@@ -514,6 +580,9 @@ function Cache.filter(needle, cap)
             end
         end
     end
+    table.sort(rows, function(a, b)
+        return tostring(a.path or "") < tostring(b.path or "")
+    end)
     return rows
 end
 

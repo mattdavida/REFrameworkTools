@@ -116,7 +116,7 @@ function Finder.draw(menu, ui)
         ui.muted("Cache paused — enable Live cache at the top right.")
     else
         ui.muted(string.format(
-            "Live cache %d — %d hops, %d singletons, %d scene (scene cap 900).",
+            "Live cache %d — %d hops, %d singletons, %d scene.",
             stats.total,
             stats.hops,
             stats.singleton,

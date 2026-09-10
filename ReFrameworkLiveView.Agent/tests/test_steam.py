@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from backend.steam import (
+    KNOWN_GAMES,
     GameNotFound,
     collect_library_paths,
     find_spec,
@@ -20,6 +22,13 @@ def test_normalize_slug() -> None:
     assert find_spec("MonsterHunterWilds") is not None
     assert find_spec("mhwilds").slug == "monsterhunterwilds"
     assert find_spec("dmc5").appids == ("601150",)
+    assert find_spec("mhrise").slug == "monsterhunterrise"
+
+
+def test_shared_catalog() -> None:
+    catalog = Path(__file__).resolve().parents[2] / "steam-games.json"
+    rows = json.loads(catalog.read_text(encoding="utf-8"))
+    assert [spec.slug for spec in KNOWN_GAMES] == [row["slug"] for row in rows]
 
 
 def test_unescape_vdf() -> None:

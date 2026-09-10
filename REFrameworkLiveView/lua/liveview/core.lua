@@ -800,6 +800,9 @@ function Core.pin(obj, name, kind, opts)
     state.pinned_name = name or (Core.type_name_of(obj) or "?")
     state.pinned_kind = next_kind
     Core.remember_object(obj, name)
+    pcall(function()
+        require("liveview.cache").touch(obj, state.pinned_name, next_kind)
+    end)
     apply_refresh()
     if keep_call then
         require("liveview.invoke").rebind_object_slots()

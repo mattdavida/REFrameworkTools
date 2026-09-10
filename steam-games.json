@@ -1,0 +1,26 @@
+[
+  {
+    "slug": "monsterhunterwilds",
+    "aliases": ["mhwilds", "mh-wilds", "mhws", "wilds"],
+    "installdirs": ["MonsterHunterWilds", "Monster Hunter Wilds"],
+    "appids": ["2246340"]
+  },
+  {
+    "slug": "monsterhunterrise",
+    "aliases": ["mhrise", "mh-rise", "mhr", "rise"],
+    "installdirs": ["MonsterHunterRise", "Monster Hunter Rise"],
+    "appids": ["1446780"]
+  },
+  {
+    "slug": "onimushawots",
+    "aliases": ["onimusha", "wots"],
+    "installdirs": ["OnimushaWotS"],
+    "appids": []
+  },
+  {
+    "slug": "dmc5",
+    "aliases": ["devilmaycry5", "devilmaycry", "dmc"],
+    "installdirs": ["Devil May Cry 5", "DevilMayCry5"],
+    "appids": ["601150"]
+  }
+]

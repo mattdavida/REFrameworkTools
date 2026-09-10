@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -842,6 +843,18 @@ static void cap_current(std::vector<API::ManagedObject*>& current) {
     }
 }
 
+static std::string chain_step_label(size_t si, const std::string& step_type, const sol::table& step) {
+    std::string label = std::to_string(si) + " " + (step_type.empty() ? "unknown" : step_type);
+    auto name = table_string(step, "name");
+    if (name.empty()) {
+        name = table_string(step, "method");
+    }
+    if (!name.empty()) {
+        label += " " + name;
+    }
+    return label;
+}
+
 static sol::table chain(sol::this_state s, sol::object spec_obj) {
     if (!spec_obj.valid() || !spec_obj.is<sol::table>()) {
         return error_table(s, "chain expects { singleton|address, steps }");
@@ -890,6 +903,7 @@ static sol::table chain(sol::this_state s, sol::object spec_obj) {
     sol::table steps = steps_obj;
     const auto step_n = steps.size();
 
+    std::string step_label;
     try {
         for (size_t si = 1; si <= step_n; ++si) {
             sol::object step_obj = steps[si];
@@ -898,8 +912,9 @@ static sol::table chain(sol::this_state s, sol::object spec_obj) {
             }
             sol::table step = step_obj;
             auto step_type = table_string(step, "type");
+            step_label = chain_step_label(si, step_type, step);
             if (step_type.empty()) {
-                return error_table(s, "step missing type");
+                return error_table(s, "step " + step_label + " missing type");
             }
 
             if (step_type == "method") {
@@ -1042,11 +1057,13 @@ static sol::table chain(sol::this_state s, sol::object spec_obj) {
 
             cap_current(current);
             if (current.empty()) {
-                return error_table(s, "Chain broken at step '" + step_type + "': no results");
+                return error_table(s, "Chain broken at step " + step_label + ": no results");
             }
         }
+    } catch (const std::exception& e) {
+        return error_table(s, "chain failed at step " + step_label + ": " + e.what());
     } catch (...) {
-        return error_table(s, "chain failed");
+        return error_table(s, "chain failed at step " + step_label);
     }
 
     return objects_to_results(s, current);

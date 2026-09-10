@@ -13,7 +13,7 @@ Live View is the explorer. Chat and MCP are accelerators: find an object in-game
 | Read fields on the opened object | yes | yes |
 | Set bool / number / string on the opened object | yes | **no** |
 | Call methods | no | no |
-| See objects outside the 3000-cap cache | no | no |
+| See objects outside the live cache (cap 8000) | no | no |
 
 MCP is read-only on purpose. Writes stay in the overlay, on an object you can see.
 
@@ -44,7 +44,7 @@ The header **Bridge** chip is the AND of the game heartbeat and the sidecar puls
 - No method calls. Fields only.
 - No non-primitive writes (objects, lists, enums).
 - No Apply / Reject row — Chat ask is the confirmation.
-- Same 3000-cap hop cache as Finder. Nested objects can be open in inspect and still miss `open_object`.
+- Same live cache as Finder (cap 8000). Nested objects can be open in inspect and still miss `open_object`.
 - `uvicorn --reload` does not pick up new tools. `liveview-agent stop` then `start`.
 - Hop allowlists live in Live View `cache.lua`. A new game looks empty until that list is retargeted.
 

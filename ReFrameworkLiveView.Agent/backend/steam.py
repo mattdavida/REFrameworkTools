@@ -8,6 +8,7 @@ we want the RE Engine install folder (Browse local files).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -40,27 +41,39 @@ class GameNotFound(Exception):
     pass
 
 
+def _catalog_path() -> Path | None:
+    here = Path(__file__).resolve()
+    for candidate in (
+        here.parents[2] / "steam-games.json",
+        here.parents[1] / "steam-games.json",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_known_games() -> tuple[GameSpec, ...]:
+    path = _catalog_path()
+    if path is None:
+        raise FileNotFoundError(
+            "steam-games.json not found next to this repo. "
+            "Expected REFrameworkTools/steam-games.json."
+        )
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    return tuple(
+        GameSpec(
+            slug=str(row["slug"]),
+            aliases=tuple(row.get("aliases") or ()),
+            installdirs=tuple(row.get("installdirs") or ()),
+            appids=tuple(str(appid) for appid in (row.get("appids") or ())),
+        )
+        for row in rows
+    )
+
+
 # Slugs are what you pass to -game. installdirs are Steam's common/ folder names.
-KNOWN_GAMES: tuple[GameSpec, ...] = (
-    GameSpec(
-        slug="monsterhunterwilds",
-        aliases=("mhwilds", "mh-wilds", "mhws", "wilds"),
-        installdirs=("MonsterHunterWilds", "Monster Hunter Wilds"),
-        appids=("2246340",),
-    ),
-    GameSpec(
-        slug="onimushawots",
-        aliases=("onimusha", "wots"),
-        installdirs=("OnimushaWotS",),
-        appids=(),
-    ),
-    GameSpec(
-        slug="dmc5",
-        aliases=("devilmaycry5", "devilmaycry", "dmc"),
-        installdirs=("Devil May Cry 5", "DevilMayCry5"),
-        appids=("601150",),
-    ),
-)
+# Shared catalog: ../../steam-games.json (same file deploy's steam.mjs reads).
+KNOWN_GAMES: tuple[GameSpec, ...] = _load_known_games()
 
 
 def normalize(value: str) -> str:

@@ -1,12 +1,14 @@
 /**
  * Steam library scan for GAME_DIR.
- * Same slugs / aliases / libraryfolders.vdf rules as liveview-agent (backend/steam.py).
+ * Slugs live in ../../steam-games.json (shared with liveview-agent).
+ * Deploy does not shell out to Python — this folder must work without the Agent.
  */
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export class GameNotFound extends Error {
   constructor(message) {
@@ -15,33 +17,13 @@ export class GameNotFound extends Error {
   }
 }
 
+function loadKnownGames() {
+  const catalog = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "steam-games.json");
+  return JSON.parse(fs.readFileSync(catalog, "utf8"));
+}
+
 /** Slugs are what you pass to -game. installdirs are Steam's common/ folder names. */
-export const KNOWN_GAMES = [
-  {
-    slug: "monsterhunterwilds",
-    aliases: ["mhwilds", "mh-wilds", "mhws", "wilds"],
-    installdirs: ["MonsterHunterWilds", "Monster Hunter Wilds"],
-    appids: ["2246340"],
-  },
-  {
-    slug: "monsterhunterrise",
-    aliases: ["mhrise", "mh-rise", "mhr", "rise"],
-    installdirs: ["MonsterHunterRise", "Monster Hunter Rise"],
-    appids: ["1446780"],
-  },
-  {
-    slug: "onimushawots",
-    aliases: ["onimusha", "wots"],
-    installdirs: ["OnimushaWotS"],
-    appids: [],
-  },
-  {
-    slug: "dmc5",
-    aliases: ["devilmaycry5", "devilmaycry", "dmc"],
-    installdirs: ["Devil May Cry 5", "DevilMayCry5"],
-    appids: ["601150"],
-  },
-];
+export const KNOWN_GAMES = loadKnownGames();
 
 export function normalize(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");

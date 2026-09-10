@@ -49,7 +49,7 @@ Edits copied into `reframework/data` are not loaded. This product does not ship 
 
 ## How search works
 
-`Finder.draw` → `live_rows()` → **`Cache.filter` on the same module as the 3000 counter**.
+`Finder.draw` → `live_rows()` → **`Cache.filter` on the same module as the cache counter**.
 
 A second results pipeline in front of that (`set_results` → another `Core.state`) desyncs the list from the counter.
 
@@ -59,9 +59,9 @@ Cache (`liveview.cache`) seeds in the background from:
 2. Singletons
 3. Scene walk (cap **900**)
 
-Total cap **3000**. Hops run before scene and can evict scene rows. Field crawl is one hop, budgeted. Status line: hops / singletons / scene.
+Total cap **8000**. Player hops are not evicted to make room. Field crawl indexes catalog / userdata children (so `_StatusParam` is searchable by `health`) without walking every component graph. Status line: hops / singletons / scene.
 
-Caps in `cache.lua`: `MAX 3000`, `SCENE_CAP 900`, empty list `SHOW_EMPTY 220`, scene `70`/frame, crawl `18`, hop `12` (boost `40`).
+Caps in `cache.lua`: `MAX 8000`, `SCENE_CAP 900`, empty list `SHOW_EMPTY 220`, scene `70`/frame, crawl `18`, hop `12` (boost `40`).
 
 The hop allowlist is per-game. Another title needs that list retargeted or Finder (and MCP) stay empty.
 
@@ -84,6 +84,7 @@ reframework/autorun/main.lua     thin host: create + attach + bind
 reframework/plugins/             ref_live.dll + ref_cursor.dll
 tools/bundle.mjs                 inline sibling RefShell + this lua/
 tools/deploy.mjs                 copy bundle + both DLLs
+tools/steam.mjs                  GAME_DIR / -game (catalog: ../../steam-games.json)
 tools/sync-reflive.ps1           copy built ref_live.dll into this repo
 ```
 
@@ -118,11 +119,11 @@ Runtime JSON in `data/` is expected. Do not ship Lua there.
 ## Limits
 
 - Cache rebuilds on scene change and when a controlling player appears.
-- Scene count can read 0 when hops fill the 3000 cap. Hops evict scene on purpose.
+- Scene count can read 0 when hops fill the cap. Hops evict scene on purpose.
 - Refresh rebuilds the cache. It does not reload Lua from disk.
 - There is no object iterator in Lua. The cache is a seeded walk. Unseen objects are absent until hopped or seen in scene.
 - Chat can Set bool / number / string on the opened object. It cannot call methods or Set non-primitives.
-- Chat and MCP see the same 3000-cap cache as Finder.
+- Chat and MCP see the same cache as Finder.
 
 ## Constraints
 

@@ -84,6 +84,6 @@ MCP stays read-only on purpose. Writes stay in the overlay, on an object you can
 
 Read tools: `bridge_status`, `ui_state`, `cache_stats`, `cache_search`, `search_types`, `open_object`, `inspect_opened`.
 
-Empty Finder means empty MCP. Same 3000-cap hop cache. Another game: `liveview-agent stop` then `start -game <folder>`, or **Start** from Chat in that session.
+Empty Finder means empty MCP. Same live cache as Finder (cap 8000). Another game: `liveview-agent stop` then `start -game <folder>`, or **Start** from Chat in that session.
 
 Do not commit `.venv/` or `.env`.
