@@ -24,12 +24,18 @@ SIDECAR = "sidecar.json"
 
 StreamFn = Callable[..., AsyncIterator[dict[str, Any]]]
 
-_busy = False
+# Lock owned by watch_inbox while a request is being handled.
+# write_sidecar checks .locked() for the busy flag so there's no separate bool.
+_inbox_lock: asyncio.Lock | None = None
+
+
+def _is_busy() -> bool:
+    return _inbox_lock is not None and _inbox_lock.locked()
 
 
 def write_sidecar(folder: Path | None = None, busy: bool | None = None) -> None:
     dest = bridge.resolve_dir(folder)
-    flag = _busy if busy is None else busy
+    flag = _is_busy() if busy is None else busy
     bridge._atomic_write(
         dest / SIDECAR,
         {"ok": True, "ts": int(time.time()), "busy": flag},
@@ -96,7 +102,8 @@ async def watch_sidecar() -> None:
 
 
 async def watch_inbox() -> None:
-    global _busy
+    global _inbox_lock
+    _inbox_lock = asyncio.Lock()
     last_id = ""
     while True:
         try:
@@ -105,16 +112,14 @@ async def watch_inbox() -> None:
             req_id = str((req or {}).get("id") or "")
             if req and req_id and req_id != last_id:
                 last_id = req_id
-                _busy = True
-                write_sidecar(folder, busy=True)
-                try:
-                    await handle_chat_req(req, folder)
-                finally:
-                    _busy = False
-                    write_sidecar(folder, busy=False)
+                async with _inbox_lock:
+                    write_sidecar(folder, busy=True)
+                    try:
+                        await handle_chat_req(req, folder)
+                    finally:
+                        write_sidecar(folder, busy=False)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("chat inbox")
-            _busy = False
         await asyncio.sleep(0.1)

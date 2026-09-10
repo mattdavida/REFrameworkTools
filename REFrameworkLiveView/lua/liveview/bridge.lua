@@ -18,7 +18,8 @@ local CHAT_REQ = "liveview_bridge/chat_req.json"
 local CHAT_OUT = "liveview_bridge/chat_out.json"
 local SIDECAR = "liveview_bridge/sidecar.json"
 
-local ROW_CAP = 40
+local ROW_CAP = 40       -- non-empty needle default
+local ROW_CAP_EMPTY = 150 -- empty needle: closer to Finder's SHOW_EMPTY (220), capped for JSON size
 local FIELD_CAP = 80
 local METHOD_CAP = 80
 local HB_EVERY = 30
@@ -164,12 +165,13 @@ end
 
 local function op_cache_search(req)
     local needle = Core.trim(req.needle)
-    local cap = tonumber(req.cap) or ROW_CAP
+    local default_cap = needle == "" and ROW_CAP_EMPTY or ROW_CAP
+    local cap = tonumber(req.cap) or default_cap
     if cap < 1 then
         cap = 1
     end
-    if cap > 80 then
-        cap = 80
+    if cap > ROW_CAP_EMPTY then
+        cap = ROW_CAP_EMPTY
     end
     local rows = Cache.filter(needle, cap)
     local out = {}
